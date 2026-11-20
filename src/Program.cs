@@ -5,31 +5,84 @@
 //   GET  /health   -> ohne Auth, nur Lebenszeichen
 //   POST /run      -> Bearer-Token nötig, startet einen Claude-Code-Lauf (optional mit "skill") und gibt dessen JSON zurück
 //   GET  /skills   -> Bearer-Token nötig, listet die Skills eines Workdirs (?workdir=<alias>)
+//
+// Logging: Serilog, konfiguriert im Abschnitt "Serilog" der appsettings.json (Konsole + Log-Dateien).
 using ClaudeBridge.Authentication;
 using ClaudeBridge.Claude;
 using ClaudeBridge.Configuration;
 using ClaudeBridge.Endpoints;
 using ClaudeBridge.Hosting;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+// Vorläufiger Logger, damit auch Fehler beim Start (Token, claude-Pfad, Konfiguration) in der Log-Datei landen.
+Log.Logger = CreateBootstrapLogger(args);
+
+try
 {
-    Args = args,
-    ContentRootPath = AppContext.BaseDirectory
-});
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+    {
+        Args = args,
+        ContentRootPath = AppContext.BaseDirectory
+    });
 
-var bridgeOptions = BridgeOptions.Load(builder.Configuration);
-var claudeExecutable = ClaudeExecutable.Locate(bridgeOptions.ClaudePath);
+    builder.Services.AddSerilog((services, logger) => logger
+        .ReadFrom.Configuration(builder.Configuration)
+        .ReadFrom.Services(services));
 
-builder.Services.AddClaudeBridge(bridgeOptions, claudeExecutable);
+    var bridgeOptions = BridgeOptions.Load(builder.Configuration);
+    var claudeExecutable = ClaudeExecutable.Locate(bridgeOptions.ClaudePath);
 
-var app = builder.Build();
+    builder.Services.AddClaudeBridge(bridgeOptions, claudeExecutable);
 
-StartupDiagnostics.LogConfiguration(app.Logger, bridgeOptions, claudeExecutable);
+    var app = builder.Build();
 
-app.UseMiddleware<RequestLoggingMiddleware>();
-app.UseMiddleware<BearerTokenAuthenticationMiddleware>();
-app.MapHealthEndpoint();
-app.MapRunEndpoint();
-app.MapSkillsEndpoint();
+    StartupDiagnostics.LogConfiguration(
+        app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(StartupDiagnostics)),
+        bridgeOptions,
+        claudeExecutable);
 
-app.Run();
+    app.UseMiddleware<RequestLoggingMiddleware>();
+    app.UseMiddleware<BearerTokenAuthenticationMiddleware>();
+    app.MapHealthEndpoint();
+    app.MapRunEndpoint();
+    app.MapSkillsEndpoint();
+
+    app.Run();
+    return 0;
+}
+catch (Exception ex)
+{
+    Log.ForContext<Program>().Fatal(ex, "Bridge konnte nicht starten");
+    return 1;
+}
+finally
+{
+    Log.CloseAndFlush();
+}
+
+// Liest dieselben Serilog-Einstellungen wie der endgültige Logger (appsettings.json, Umgebungsvariablen,
+// Kommandozeile). Ist appsettings.json selbst nicht lesbar, bleibt nur die Konsole.
+static Serilog.ILogger CreateBootstrapLogger(string[] args)
+{
+    try
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false)
+            .AddEnvironmentVariables()
+            .AddCommandLine(args)
+            .Build();
+
+        return new LoggerConfiguration()
+            .ReadFrom.Configuration(configuration)
+            .CreateBootstrapLogger();
+    }
+    catch (Exception ex)
+    {
+        var fallback = new LoggerConfiguration()
+            .WriteTo.Console()
+            .CreateBootstrapLogger();
+        fallback.Fatal(ex, "appsettings.json konnte nicht gelesen werden");
+        return fallback;
+    }
+}
