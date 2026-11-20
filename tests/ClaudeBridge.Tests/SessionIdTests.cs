@@ -62,11 +62,13 @@ public sealed class SessionIdTests(BridgeFixture bridge)
     {
         using var client = bridge.CreateClient();
         using var abort = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var logPosition = bridge.ReadLogLines().Count;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.PostAsJsonAsync("/run",
             new { prompt = "x", workdir = BridgeFixture.WorkdirAlias, model = "slow" }, abort.Token));
 
-        // Ohne Antwort gibt es keinen Header: Die Anfrage ist die einzige mit Status 499 in diesem Testlauf.
-        var requestLine = await bridge.WaitForLogLineAsync(l => l.Message.StartsWith("POST /run -> 499"), TimeSpan.FromSeconds(30));
+        // Ohne Antwort gibt es keinen Header: Die Anfrage über die 499-Zeile finden, die nach dem Start entstand.
+        var requestLine = await bridge.WaitForLogLineAsync(
+            l => l.Message.StartsWith("POST /run -> 499"), TimeSpan.FromSeconds(30), afterLineCount: logPosition);
         var runEnd = Assert.Single(bridge.ReadLogLines(), l => l.RequestId == requestLine.RequestId && l.Message.StartsWith("Run end:"));
         Assert.Contains("abgebrochen=true", runEnd.Message);
         Assert.EndsWith(" session=-", runEnd.Message);

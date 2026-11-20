@@ -91,13 +91,17 @@ public sealed partial class BridgeFixture : IDisposable
         return lines;
     }
 
-    /// <summary>Wartet, bis eine passende Zeile im Log steht: Die Request-Zeile entsteht erst nach der Antwort.</summary>
-    public async Task<LogLine> WaitForLogLineAsync(Func<LogLine, bool> predicate, TimeSpan? timeout = null)
+    /// <summary>
+    /// Wartet, bis eine passende Zeile im Log steht: Die Request-Zeile entsteht erst nach der Antwort.
+    /// Mit <paramref name="afterLineCount"/> zählen nur Zeilen, die danach geschrieben wurden.
+    /// </summary>
+    public async Task<LogLine> WaitForLogLineAsync(
+        Func<LogLine, bool> predicate, TimeSpan? timeout = null, int afterLineCount = 0)
     {
         var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
         while (true)
         {
-            var line = ReadLogLines().FirstOrDefault(predicate);
+            var line = ReadLogLines().Skip(afterLineCount).FirstOrDefault(predicate);
             if (line is not null)
                 return line;
             if (DateTime.UtcNow > deadline)

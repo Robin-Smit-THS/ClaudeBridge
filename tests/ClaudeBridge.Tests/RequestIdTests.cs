@@ -56,9 +56,11 @@ public sealed class RequestIdTests(BridgeFixture bridge)
     {
         using var client = bridge.CreateClient();
 
+        var logPosition = bridge.ReadLogLines().Count;
         var runTask = client.PostAsJsonAsync("/run",
             new { prompt = "lange", workdir = BridgeFixture.WorkdirAlias, model = "wait" });
-        await Task.Delay(TimeSpan.FromSeconds(1)); // der Fake läuft im Modus "wait" etwa 3 Sekunden
+        // Der Fake läuft im Modus "wait" etwa 3 Sekunden: /skills erst senden, wenn der Lauf gestartet ist.
+        await bridge.WaitForLogLineAsync(l => l.Message.StartsWith("Run start:"), afterLineCount: logPosition);
         var skillsResponse = await client.GetAsync($"/skills?workdir={BridgeFixture.WorkdirAlias}");
         var runResponse = await runTask;
 
