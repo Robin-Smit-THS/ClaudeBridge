@@ -11,7 +11,7 @@ public abstract record RunOutcome
     public sealed record Completed(string Json) : RunOutcome;
 
     /// <summary>Der Prozess ist beendet, hat aber kein gültiges JSON geliefert.</summary>
-    public sealed record InvalidOutput(int ExitCode, string Stdout, string Stderr) : RunOutcome;
+    public sealed record InvalidOutput(int ExitCode, string Stderr) : RunOutcome;
 
     /// <summary>Der Lauf hat das konfigurierte Zeitlimit überschritten und wurde beendet.</summary>
     public sealed record TimedOut(int TimeoutMinutes) : RunOutcome;

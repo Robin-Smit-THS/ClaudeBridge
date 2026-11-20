@@ -45,8 +45,8 @@ public static class RunEndpoint
         {
             error = "Claude hat kein gültiges JSON geliefert",
             exitCode = invalid.ExitCode,
-            stderr = Truncate(invalid.Stderr),
-            stdout = Truncate(invalid.Stdout)
+            // stdout bewusst nicht: kann Inhalte aus dem Workdir enthalten und landet sonst im Log
+            stderr = Truncate(invalid.Stderr)
         }, statusCode: StatusCodes.Status502BadGateway),
 
         RunOutcome.TimedOut timedOut => Results.Json(

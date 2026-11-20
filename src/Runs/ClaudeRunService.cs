@@ -43,7 +43,7 @@ public sealed class ClaudeRunService(
         var json = ClaudeOutputParser.ExtractJsonObject(result.Stdout);
         return json is not null
             ? new RunOutcome.Completed(json)
-            : new RunOutcome.InvalidOutput(result.ExitCode, result.Stdout, result.Stderr);
+            : new RunOutcome.InvalidOutput(result.ExitCode, result.Stderr);
     }
 
     private void LogRunStart(ValidatedRun run) =>
