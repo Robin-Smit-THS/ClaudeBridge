@@ -25,6 +25,7 @@ var app = builder.Build();
 
 StartupDiagnostics.LogConfiguration(app.Logger, bridgeOptions, claudeExecutable);
 
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<BearerTokenAuthenticationMiddleware>();
 app.MapHealthEndpoint();
 app.MapRunEndpoint();

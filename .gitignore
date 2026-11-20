@@ -1,0 +1,47 @@
+## Build-Ausgaben
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+publish/
+*.nupkg
+*.snupkg
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+## JetBrains Rider
+.idea/
+*.sln.iml
+
+## VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## Tests / Coverage
+TestResults/
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+*.coverage
+*.coveragexml
+
+## Lokale Konfiguration (z. B. für Bridge:Token – nie einchecken)
+appsettings.*.local.json
+appsettings.Local.json
+*.env
+.env
+
+## Betriebssystem
+Thumbs.db
+Desktop.ini
+.DS_Store
