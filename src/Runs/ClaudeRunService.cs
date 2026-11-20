@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using ClaudeBridge.Claude;
-using ClaudeBridge.Configuration;
 
 namespace ClaudeBridge.Runs;
 
@@ -8,7 +7,6 @@ namespace ClaudeBridge.Runs;
 /// Führt einen geprüften Lauf aus: Slot reservieren, Zeitlimit setzen, Claude starten, Ergebnis auswerten.
 /// </summary>
 public sealed class ClaudeRunService(
-    BridgeOptions options,
     RunConcurrencyLimiter concurrencyLimiter,
     ClaudeProcessRunner processRunner,
     ILogger<ClaudeRunService> logger)
@@ -16,7 +14,7 @@ public sealed class ClaudeRunService(
     public async Task<RunOutcome> ExecuteAsync(ValidatedRun run, CancellationToken requestAborted)
     {
         using var slot = await concurrencyLimiter.AcquireSlotAsync(requestAborted);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(options.TimeoutMinutes));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(run.TimeoutMinutes));
         using var timeoutOrAbort = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, requestAborted);
 
         var stopwatch = Stopwatch.StartNew();
@@ -30,15 +28,15 @@ public sealed class ClaudeRunService(
 
         LogRunEnd(result, stopwatch.Elapsed, timeout.IsCancellationRequested, requestAborted.IsCancellationRequested);
 
-        return ToOutcome(result, timedOut: timeout.IsCancellationRequested);
+        return ToOutcome(result, run.TimeoutMinutes, timedOut: timeout.IsCancellationRequested);
     }
 
-    private RunOutcome ToOutcome(ClaudeProcessResult result, bool timedOut)
+    private static RunOutcome ToOutcome(ClaudeProcessResult result, int timeoutMinutes, bool timedOut)
     {
         if (result.WasCancelled)
         {
             return timedOut
-                ? new RunOutcome.TimedOut(options.TimeoutMinutes)
+                ? new RunOutcome.TimedOut(timeoutMinutes)
                 : new RunOutcome.AbortedByClient();
         }
 
@@ -50,8 +48,9 @@ public sealed class ClaudeRunService(
 
     private void LogRunStart(ValidatedRun run) =>
         logger.LogInformation(
-            "Run start: workdir={Workdir} tools=[{Tools}] maxTurns={MaxTurns} promptLen={Len}",
-            run.WorkdirAlias, string.Join(",", run.Tools), run.MaxTurns, run.Prompt.Length);
+            "Run start: workdir={Workdir} skill={Skill} resume={Resume} tools=[{Tools}] maxTurns={MaxTurns} timeout={Timeout}min promptLen={Len}",
+            run.WorkdirAlias, run.Skill ?? "-", run.ResumeSessionId is not null, string.Join(",", run.Tools),
+            run.MaxTurns, run.TimeoutMinutes, run.Prompt.Length);
 
     private void LogRunEnd(ClaudeProcessResult result, TimeSpan duration, bool timedOut, bool aborted) =>
         logger.LogInformation(

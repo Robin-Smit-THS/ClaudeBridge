@@ -19,5 +19,13 @@ public static class StartupDiagnostics
             else
                 logger.LogWarning("Workdir '{Alias}' -> {Path} existiert NICHT", alias, path);
         }
+
+        foreach (var (name, skill) in options.Skills)
+        {
+            logger.LogInformation(
+                "Skill '{Name}': tools=[{Tools}] maxTurns={MaxTurns} timeout={Timeout}min",
+                name, string.Join(",", skill.Tools), skill.MaxTurns ?? options.DefaultMaxTurns,
+                skill.TimeoutMinutes ?? options.TimeoutMinutes);
+        }
     }
 }

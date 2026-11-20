@@ -1,6 +1,7 @@
 using ClaudeBridge.Claude;
 using ClaudeBridge.Configuration;
 using ClaudeBridge.Runs;
+using ClaudeBridge.Skills;
 
 namespace ClaudeBridge.Hosting;
 
@@ -19,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(executable);
         services.AddSingleton<ClaudeProcessRunner>();
         services.AddSingleton<RunConcurrencyLimiter>();
+        services.AddSingleton<SkillCatalog>();
         services.AddSingleton<RunRequestValidator>();
         services.AddSingleton<ClaudeRunService>();
         return services;

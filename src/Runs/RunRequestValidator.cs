@@ -1,13 +1,14 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using ClaudeBridge.Configuration;
+using ClaudeBridge.Skills;
 
 namespace ClaudeBridge.Runs;
 
 /// <summary>
 /// Prüft einen <see cref="RunRequest"/> gegen die Konfiguration und macht daraus einen <see cref="ValidatedRun"/>.
 /// </summary>
-public sealed partial class RunRequestValidator(BridgeOptions options)
+public sealed partial class RunRequestValidator(BridgeOptions options, SkillCatalog skillCatalog)
 {
     private const int MaxPromptLength = 100_000;
 
@@ -16,38 +17,65 @@ public sealed partial class RunRequestValidator(BridgeOptions options)
         [NotNullWhen(true)] out ValidatedRun? run,
         [NotNullWhen(false)] out object? error)
     {
-        var tools = request.AllowedTools is { Length: > 0 } ? request.AllowedTools : options.DefaultTools;
+        run = null;
+        var skillOptions = options.GetSkillOptions(request.Skill);
+        var tools = SelectTools(request, skillOptions);
 
-        error = ValidatePrompt(request.Prompt)
-             ?? ValidateWorkdir(request.Workdir)
-             ?? ValidateTools(tools)
+        error = ValidateWorkdir(request.Workdir)
+             ?? ValidateSkill(request.Skill, request.Workdir!)
+             ?? ValidatePrompt(request)
+             ?? ValidateTools(tools, skillOptions)
              ?? ValidateResumeSessionId(request.ResumeSessionId)
              ?? ValidateModel(request.Model);
 
         if (error is not null)
-        {
-            run = null;
             return false;
-        }
+
+        var maxTurnsLimit = skillOptions?.MaxTurns ?? options.MaxMaxTurns;
+        var defaultMaxTurns = skillOptions?.MaxTurns ?? options.DefaultMaxTurns;
 
         run = new ValidatedRun(
-            Prompt: request.Prompt!,
+            Prompt: BuildPrompt(request),
             WorkdirAlias: request.Workdir!,
             WorkdirPath: options.Workdirs[request.Workdir!],
             Tools: tools,
-            MaxTurns: Math.Clamp(request.MaxTurns ?? options.DefaultMaxTurns, 1, options.MaxMaxTurns),
+            MaxTurns: Math.Clamp(request.MaxTurns ?? defaultMaxTurns, 1, maxTurnsLimit),
             ResumeSessionId: request.ResumeSessionId,
             Model: request.Model,
-            AppendSystemPrompt: request.AppendSystemPrompt);
+            AppendSystemPrompt: request.AppendSystemPrompt,
+            Skill: request.Skill,
+            TimeoutMinutes: skillOptions?.TimeoutMinutes ?? options.TimeoutMinutes);
         return true;
     }
 
-    private static object? ValidatePrompt(string? prompt)
+    /// <summary>
+    /// Explizit angeforderte Tools haben Vorrang, sonst die Tools des Skills, sonst die globalen DefaultTools.
+    /// </summary>
+    private string[] SelectTools(RunRequest request, SkillOptions? skillOptions)
     {
-        if (string.IsNullOrWhiteSpace(prompt))
+        if (request.AllowedTools is { Length: > 0 })
+            return request.AllowedTools;
+
+        return skillOptions?.Tools is { Length: > 0 } skillTools ? skillTools : options.DefaultTools;
+    }
+
+    /// <summary>
+    /// Neuer Skill-Lauf: "/skill argumente" – Claude Code expandiert das wie im interaktiven Modus.
+    /// Folgeanfrage (resumeSessionId): nur die Antwort, damit der Skill nicht von vorn startet.
+    /// </summary>
+    private static string BuildPrompt(RunRequest request) =>
+        request.Skill is not null && request.ResumeSessionId is null
+            ? $"/{request.Skill} {request.Prompt}".TrimEnd()
+            : request.Prompt!;
+
+    private static object? ValidatePrompt(RunRequest request)
+    {
+        // Bei einem neuen Skill-Lauf sind Argumente optional; sonst (auch bei resume) ist ein Prompt nötig.
+        var promptRequired = request.Skill is null || request.ResumeSessionId is not null;
+        if (promptRequired && string.IsNullOrWhiteSpace(request.Prompt))
             return new { error = "prompt fehlt" };
 
-        if (prompt.Length > MaxPromptLength)
+        if (request.Prompt is { Length: > MaxPromptLength })
             return new { error = "prompt zu lang (max. 100.000 Zeichen)" };
 
         return null;
@@ -64,14 +92,35 @@ public sealed partial class RunRequestValidator(BridgeOptions options)
         return null;
     }
 
-    private object? ValidateTools(string[] tools)
+    private object? ValidateSkill(string? skill, string workdirAlias)
     {
-        var forbiddenTools = tools
-            .Where(tool => !options.AllowedTools.Contains(tool, StringComparer.Ordinal))
-            .ToArray();
+        if (skill is null)
+            return null;
+
+        var workdirPath = options.Workdirs[workdirAlias];
+        var found = skillCatalog.Find(workdirPath, skill);
+
+        if (found is null)
+        {
+            return new
+            {
+                error = $"unbekannter skill '{skill}' in workdir '{workdirAlias}'",
+                verfuegbar = skillCatalog.List(workdirPath).Where(s => s.UserInvocable).Select(s => s.Name)
+            };
+        }
+
+        return found.UserInvocable
+            ? null
+            : new { error = $"skill '{skill}' ist nicht direkt aufrufbar (user-invocable: false)" };
+    }
+
+    private object? ValidateTools(string[] tools, SkillOptions? skillOptions)
+    {
+        var permitted = options.AllowedTools.Concat(skillOptions?.Tools ?? []).ToHashSet(StringComparer.Ordinal);
+        var forbiddenTools = tools.Where(tool => !permitted.Contains(tool)).ToArray();
 
         return forbiddenTools.Length > 0
-            ? new { error = "nicht freigegebene Tools", tools = forbiddenTools, erlaubt = options.AllowedTools }
+            ? new { error = "nicht freigegebene Tools", tools = forbiddenTools, erlaubt = permitted }
             : null;
     }
 

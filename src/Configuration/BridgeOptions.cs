@@ -20,6 +20,13 @@ public sealed class BridgeOptions
     public int TimeoutMinutes { get; init; } = 15;
     public int MaxConcurrentRuns { get; init; } = 1;
 
+    /// <summary>Freigaben pro Skill-Name. Skills selbst werden dynamisch aus &lt;workdir&gt;/.claude/skills gelesen.</summary>
+    public Dictionary<string, SkillOptions> Skills { get; set; } = new();
+
+    /// <summary>Konfigurierte Freigaben für einen Skill oder null, wenn er mit den normalen Einstellungen läuft.</summary>
+    public SkillOptions? GetSkillOptions(string? skillName) =>
+        skillName is not null && Skills.TryGetValue(skillName, out var skill) ? skill : null;
+
     public static BridgeOptions Load(IConfiguration configuration)
     {
         var options = configuration.GetSection(SectionName).Get<BridgeOptions>() ?? new BridgeOptions();
@@ -31,6 +38,7 @@ public sealed class BridgeOptions
     private void ApplyDefaults()
     {
         Workdirs = new Dictionary<string, string>(Workdirs, StringComparer.OrdinalIgnoreCase);
+        Skills = new Dictionary<string, SkillOptions>(Skills, StringComparer.OrdinalIgnoreCase);
 
         if (AllowedTools.Length == 0)
             AllowedTools = ReadOnlyTools;

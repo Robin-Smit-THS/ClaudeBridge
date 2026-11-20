@@ -3,7 +3,8 @@
 //
 // Endpunkte:
 //   GET  /health   -> ohne Auth, nur Lebenszeichen
-//   POST /run      -> Bearer-Token nötig, startet einen Claude-Code-Lauf und gibt dessen JSON zurück
+//   POST /run      -> Bearer-Token nötig, startet einen Claude-Code-Lauf (optional mit "skill") und gibt dessen JSON zurück
+//   GET  /skills   -> Bearer-Token nötig, listet die Skills eines Workdirs (?workdir=<alias>)
 using ClaudeBridge.Authentication;
 using ClaudeBridge.Claude;
 using ClaudeBridge.Configuration;
@@ -29,5 +30,6 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<BearerTokenAuthenticationMiddleware>();
 app.MapHealthEndpoint();
 app.MapRunEndpoint();
+app.MapSkillsEndpoint();
 
 app.Run();

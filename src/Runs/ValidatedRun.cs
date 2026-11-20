@@ -11,4 +11,6 @@ public sealed record ValidatedRun(
     int MaxTurns,
     string? ResumeSessionId,
     string? Model,
-    string? AppendSystemPrompt);
+    string? AppendSystemPrompt,
+    string? Skill,
+    int TimeoutMinutes);
