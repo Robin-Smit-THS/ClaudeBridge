@@ -11,6 +11,7 @@ namespace ClaudeBridge.Hosting;
 ///
 /// Fängt außerdem <see cref="BadHttpRequestException"/> ab (z. B. ungültiges JSON im Body)
 /// und beantwortet sie mit 400 und einer lesbaren Fehlermeldung statt eines leeren Bodys.
+/// Andere unbehandelte Ausnahmen werden geloggt und mit 500 beantwortet, ebenfalls mit X-Request-Id.
 /// </summary>
 public sealed class RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
 {
@@ -36,6 +37,16 @@ public sealed class RequestLoggingMiddleware(RequestDelegate next, ILogger<Reque
         {
             context.Response.StatusCode = ex.StatusCode;
             await context.Response.WriteAsJsonAsync(new { error = DescribeBadRequest(ex) });
+        }
+        catch (Exception ex) when (!context.Response.HasStarted && !context.RequestAborted.IsCancellationRequested)
+        {
+            // Selbst beantworten statt an Kestrel weiterreichen: Kestrel löscht bei einer unbehandelten Ausnahme
+            // alle Header (auch X-Request-Id), und die Request-Zeile würde den Status vor der Ausnahme loggen.
+            logger.LogError(ex, "Unbehandelte Ausnahme");
+            context.Response.Clear();
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.Headers[RequestIdHeader] = context.TraceIdentifier;
+            await context.Response.WriteAsJsonAsync(new { error = "interner Fehler, Details im Log der Bridge" });
         }
         finally
         {

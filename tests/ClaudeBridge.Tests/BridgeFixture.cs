@@ -14,12 +14,16 @@ public sealed partial class BridgeFixture : IDisposable
 {
     public const string Token = "test-token-0123456789abcdefghijklmnopqrstuv";
     public const string WorkdirAlias = "testdir";
+
+    /// <summary>Workdir mit einem Skill, dessen SKILL.md ein Test sperren kann (GET /skills scheitert dann).</summary>
+    public const string BrokenWorkdirAlias = "brokendir";
+
     public const int TimeoutMinutes = 1;
 
     private static readonly string[] EnvironmentVariables =
     [
         "Bridge__Token", "Bridge__ClaudePath", "Bridge__TimeoutMinutes", "Bridge__MaxConcurrentRuns",
-        $"Bridge__Workdirs__{WorkdirAlias}", "Serilog__WriteTo__1__Args__path"
+        $"Bridge__Workdirs__{WorkdirAlias}", $"Bridge__Workdirs__{BrokenWorkdirAlias}", "Serilog__WriteTo__1__Args__path"
     ];
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ClaudeBridge.Tests", Guid.NewGuid().ToString("N"));
@@ -28,6 +32,10 @@ public sealed partial class BridgeFixture : IDisposable
     public BridgeFixture()
     {
         var workdir = Directory.CreateDirectory(Path.Combine(_root, "workdir")).FullName;
+        var brokenWorkdir = Directory.CreateDirectory(Path.Combine(_root, "brokendir")).FullName;
+        var skillDirectory = Directory.CreateDirectory(Path.Combine(brokenWorkdir, ".claude", "skills", "gesperrt"));
+        BrokenSkillFile = Path.Combine(skillDirectory.FullName, "SKILL.md");
+        File.WriteAllText(BrokenSkillFile, "---\ndescription: wird im Test gesperrt\n---\n");
         LogDirectory = Path.Combine(_root, "logs");
         var claudePath = Path.Combine(_root, "claude.cmd");
         // cmd.exe springt in Batch-Dateien mit reinen LF-Zeilenenden nicht zuverlässig zu Labels
@@ -38,6 +46,7 @@ public sealed partial class BridgeFixture : IDisposable
         Environment.SetEnvironmentVariable("Bridge__TimeoutMinutes", TimeoutMinutes.ToString());
         Environment.SetEnvironmentVariable("Bridge__MaxConcurrentRuns", "4");
         Environment.SetEnvironmentVariable($"Bridge__Workdirs__{WorkdirAlias}", workdir);
+        Environment.SetEnvironmentVariable($"Bridge__Workdirs__{BrokenWorkdirAlias}", brokenWorkdir);
         Environment.SetEnvironmentVariable("Serilog__WriteTo__1__Args__path", Path.Combine(LogDirectory, "bridge-.log"));
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -47,6 +56,8 @@ public sealed partial class BridgeFixture : IDisposable
     }
 
     public string LogDirectory { get; }
+
+    public string BrokenSkillFile { get; }
 
     public HttpClient CreateClient(bool authorized = true)
     {

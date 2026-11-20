@@ -112,6 +112,20 @@ public sealed class RequestIdTests(BridgeFixture bridge)
     }
 
     [Fact]
+    public async Task AC4_response_to_an_unhandled_exception_carries_the_request_id()
+    {
+        using var client = bridge.CreateClient();
+        HttpResponseMessage response;
+
+        // Gesperrte SKILL.md: Das Lesen wirft eine IOException, die bis zur Middleware durchschlägt.
+        using (new FileStream(bridge.BrokenSkillFile, FileMode.Open, FileAccess.Read, FileShare.None))
+            response = await client.GetAsync($"/skills?workdir={BridgeFixture.BrokenWorkdirAlias}");
+
+        var requestId = await AssertRequestLineCarriesHeaderIdAsync(response, HttpStatusCode.InternalServerError);
+        Assert.Contains(bridge.ReadLogLines(), l => l.RequestId == requestId && l.Level == "ERR");
+    }
+
+    [Fact]
     public async Task AC4_timed_out_run_carries_the_request_id()
     {
         using var client = bridge.CreateClient();
@@ -126,7 +140,8 @@ public sealed class RequestIdTests(BridgeFixture bridge)
     {
         Assert.Equal(expectedStatus, response.StatusCode);
         var requestId = GetRequestId(response);
-        var line = await bridge.WaitForLogLineAsync(l => l.RequestId == requestId && l.SourceContext == RequestLogSource);
+        var line = await bridge.WaitForLogLineAsync(
+            l => l.RequestId == requestId && l.SourceContext == RequestLogSource && l.Message.Contains(" -> "));
         Assert.Contains($" -> {(int)expectedStatus} in ", line.Message);
         return requestId;
     }
