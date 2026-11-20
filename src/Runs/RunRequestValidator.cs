@@ -124,8 +124,11 @@ public sealed partial class RunRequestValidator(BridgeOptions options, SkillCata
             : null;
     }
 
+    /// <summary>Format einer Claude-Session-ID; gilt für resumeSessionId und für die session_id in Claudes Antwort.</summary>
+    public static bool IsValidSessionId(string sessionId) => SessionIdPattern().IsMatch(sessionId);
+
     private static object? ValidateResumeSessionId(string? sessionId) =>
-        sessionId is not null && !SessionIdPattern().IsMatch(sessionId)
+        sessionId is not null && !IsValidSessionId(sessionId)
             ? new { error = "ungültige resumeSessionId" }
             : null;
 

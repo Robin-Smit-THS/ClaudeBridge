@@ -29,21 +29,27 @@ public sealed class ClaudeRunService(
 
         var outcome = ToOutcome(result, run.TimeoutMinutes, timedOut: timeout.IsCancellationRequested);
         LogRunEnd(result, stopwatch.Elapsed, timeout.IsCancellationRequested, requestAborted.IsCancellationRequested,
-            ReadSessionId(outcome));
+            DescribeSessionId(outcome));
 
         return outcome;
     }
 
-    /// <summary>Session-ID aus Claudes Antwort (<c>session_id</c>) oder null, wenn Claude keine geliefert hat.</summary>
-    private static string? ReadSessionId(RunOutcome outcome)
+    /// <summary>
+    /// Session-ID aus Claudes Antwort (<c>session_id</c>) für die Zeile "Run end": "-", wenn Claude keine
+    /// geliefert hat, "(ungültig)", wenn sie nicht dem Format entspricht (sie könnte sonst z. B. per
+    /// Zeilenumbruch gefälschte Log-Zeilen erzeugen).
+    /// </summary>
+    private static string DescribeSessionId(RunOutcome outcome)
     {
         if (outcome is not RunOutcome.Completed completed)
-            return null;
+            return "-";
 
         using var json = JsonDocument.Parse(completed.Json);
-        return json.RootElement.TryGetProperty("session_id", out var sessionId) && sessionId.ValueKind == JsonValueKind.String
-            ? sessionId.GetString()
-            : null;
+        if (!json.RootElement.TryGetProperty("session_id", out var property) || property.ValueKind != JsonValueKind.String)
+            return "-";
+
+        var sessionId = property.GetString()!;
+        return RunRequestValidator.IsValidSessionId(sessionId) ? sessionId : "(ungültig)";
     }
 
     private static RunOutcome ToOutcome(ClaudeProcessResult result, int timeoutMinutes, bool timedOut)
@@ -67,8 +73,8 @@ public sealed class ClaudeRunService(
             run.WorkdirAlias, run.Skill ?? "-", run.ResumeSessionId ?? "-", string.Join(",", run.Tools),
             run.MaxTurns, run.TimeoutMinutes, run.Prompt.Length);
 
-    private void LogRunEnd(ClaudeProcessResult result, TimeSpan duration, bool timedOut, bool aborted, string? sessionId) =>
+    private void LogRunEnd(ClaudeProcessResult result, TimeSpan duration, bool timedOut, bool aborted, string sessionId) =>
         logger.LogInformation(
             "Run end: exit={Exit} dauer={Ms}ms timeout={Timeout} abgebrochen={Aborted} session={SessionId}",
-            result.ExitCode, (long)duration.TotalMilliseconds, timedOut, aborted, sessionId ?? "-");
+            result.ExitCode, (long)duration.TotalMilliseconds, timedOut, aborted, sessionId);
 }

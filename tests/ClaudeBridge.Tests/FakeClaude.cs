@@ -5,6 +5,7 @@ namespace ClaudeBridge.Tests;
 /// <list type="bullet">
 /// <item><c>nojson</c>: keine JSON-Ausgabe (Bridge antwortet 502)</item>
 /// <item><c>nosession</c>: gültiges JSON ohne session_id</item>
+/// <item><c>badsession</c>: session_id mit Zeilenumbruch (<see cref="ForgedSessionId"/>)</item>
 /// <item><c>slow</c>: läuft länger als das Zeitlimit (Timeout bzw. Abbruch)</item>
 /// <item><c>wait</c>: läuft etwa 3 Sekunden</item>
 /// <item><c>sid-…</c>: liefert diesen Wert als session_id</item>
@@ -14,6 +15,9 @@ namespace ClaudeBridge.Tests;
 public static class FakeClaude
 {
     public const string DefaultSessionId = "fake-default-session";
+
+    /// <summary>Session-ID mit Zeilenumbruch (JSON-Escape \n), die eine gefälschte zweite Log-Zeile erzeugen würde.</summary>
+    public const string ForgedSessionId = @"x\n2026-01-01 00:00:00.000 +01:00 [INF] [] Forged: gefaelschte Zeile";
 
     public const string Script = $$"""
         @echo off
@@ -33,6 +37,10 @@ public static class FakeClaude
         )
         if "%MODE%"=="nosession" (
           echo {"type":"result","result":"ok"}
+          exit /b 0
+        )
+        if "%MODE%"=="badsession" (
+          echo {"type":"result","result":"ok","session_id":"{{ForgedSessionId}}"}
           exit /b 0
         )
         if "%MODE%"=="slow" ping -n 200 127.0.0.1 > nul

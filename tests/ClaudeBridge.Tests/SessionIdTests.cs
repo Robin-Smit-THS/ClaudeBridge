@@ -49,6 +49,16 @@ public sealed class SessionIdTests(BridgeFixture bridge)
     }
 
     [Fact]
+    public async Task Run_end_does_not_log_a_session_id_that_could_forge_log_lines()
+    {
+        var (response, lines) = await RunAsync(new { prompt = "x", workdir = BridgeFixture.WorkdirAlias, model = "badsession" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.EndsWith(" session=(ungültig)", RunEnd(lines).Message);
+        Assert.DoesNotContain(bridge.ReadLogLines(), l => l.Message.Contains("gefaelschte"));
+    }
+
+    [Fact]
     public async Task AC6_run_end_logs_a_dash_when_the_run_times_out()
     {
         var (response, lines) = await RunAsync(new { prompt = "x", workdir = BridgeFixture.WorkdirAlias, model = "slow" });
