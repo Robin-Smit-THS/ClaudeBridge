@@ -4,7 +4,8 @@ using System.Text;
 namespace ClaudeBridge.Hosting;
 
 /// <summary>
-/// Protokolliert jede Anfrage mit Methode, Pfad, Statuscode, Dauer und Absender-IP.
+/// Protokolliert jede Anfrage mit Methode, Pfad, Statuscode, Dauer und Absender-IP und gibt
+/// die Request-ID im Antwort-Header X-Request-Id zurück.
 /// Bei Fehlern (Status ab 400) wird zusätzlich der Antwort-Body als Begründung geloggt
 /// (gekürzt). Request-Header (insbesondere Authorization) und Request-Bodies werden nie geloggt.
 ///
@@ -14,9 +15,14 @@ namespace ClaudeBridge.Hosting;
 public sealed class RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
 {
     private const int MaxLoggedBodyBytes = 2000;
+    private const string RequestIdHeader = "X-Request-Id";
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Dieselbe ID, die ASP.NET Core als RequestId in jede Log-Zeile der Anfrage schreibt.
+        // Vor next() gesetzt, damit auch Fehlerantworten (z. B. 401 der Anmeldung) den Header tragen.
+        context.Response.Headers[RequestIdHeader] = context.TraceIdentifier;
+
         var stopwatch = Stopwatch.StartNew();
         var originalBody = context.Response.Body;
         var capture = new ResponseCaptureStream(originalBody, MaxLoggedBodyBytes);
