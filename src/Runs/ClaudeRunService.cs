@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using ClaudeBridge.Claude;
 
 namespace ClaudeBridge.Runs;
@@ -26,9 +27,29 @@ public sealed class ClaudeRunService(
             run.Prompt,
             timeoutOrAbort.Token);
 
-        LogRunEnd(result, stopwatch.Elapsed, timeout.IsCancellationRequested, requestAborted.IsCancellationRequested);
+        var outcome = ToOutcome(result, run.TimeoutMinutes, timedOut: timeout.IsCancellationRequested);
+        LogRunEnd(result, stopwatch.Elapsed, timeout.IsCancellationRequested, requestAborted.IsCancellationRequested,
+            DescribeSessionId(outcome));
 
-        return ToOutcome(result, run.TimeoutMinutes, timedOut: timeout.IsCancellationRequested);
+        return outcome;
+    }
+
+    /// <summary>
+    /// Session-ID aus Claudes Antwort (<c>session_id</c>) für die Zeile "Run end": "-", wenn Claude keine
+    /// geliefert hat, "(ungültig)", wenn sie nicht dem Format entspricht (sie könnte sonst z. B. per
+    /// Zeilenumbruch gefälschte Log-Zeilen erzeugen).
+    /// </summary>
+    private static string DescribeSessionId(RunOutcome outcome)
+    {
+        if (outcome is not RunOutcome.Completed completed)
+            return "-";
+
+        using var json = JsonDocument.Parse(completed.Json);
+        if (!json.RootElement.TryGetProperty("session_id", out var property) || property.ValueKind != JsonValueKind.String)
+            return "-";
+
+        var sessionId = property.GetString()!;
+        return RunRequestValidator.IsValidSessionId(sessionId) ? sessionId : "(ungültig)";
     }
 
     private static RunOutcome ToOutcome(ClaudeProcessResult result, int timeoutMinutes, bool timedOut)
@@ -48,12 +69,12 @@ public sealed class ClaudeRunService(
 
     private void LogRunStart(ValidatedRun run) =>
         logger.LogInformation(
-            "Run start: workdir={Workdir} skill={Skill} resume={Resume} tools=[{Tools}] maxTurns={MaxTurns} timeout={Timeout}min promptLen={Len}",
-            run.WorkdirAlias, run.Skill ?? "-", run.ResumeSessionId is not null, string.Join(",", run.Tools),
+            "Run start: workdir={Workdir} skill={Skill} resumeSession={ResumeSession} tools=[{Tools}] maxTurns={MaxTurns} timeout={Timeout}min promptLen={Len}",
+            run.WorkdirAlias, run.Skill ?? "-", run.ResumeSessionId ?? "-", string.Join(",", run.Tools),
             run.MaxTurns, run.TimeoutMinutes, run.Prompt.Length);
 
-    private void LogRunEnd(ClaudeProcessResult result, TimeSpan duration, bool timedOut, bool aborted) =>
+    private void LogRunEnd(ClaudeProcessResult result, TimeSpan duration, bool timedOut, bool aborted, string sessionId) =>
         logger.LogInformation(
-            "Run end: exit={Exit} dauer={Ms}ms timeout={Timeout} abgebrochen={Aborted}",
-            result.ExitCode, (long)duration.TotalMilliseconds, timedOut, aborted);
+            "Run end: exit={Exit} dauer={Ms}ms timeout={Timeout} abgebrochen={Aborted} session={SessionId}",
+            result.ExitCode, (long)duration.TotalMilliseconds, timedOut, aborted, sessionId);
 }
